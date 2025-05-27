@@ -55,7 +55,7 @@ lr = 1e-4
 optimizer = Adam(params=params_to_update, lr=lr)
 
 # 학습 루프
-epochs = 5
+epochs = 100
 for epoch in range(epochs):
     model.train()
     iterator = tqdm.tqdm(train_loader)
