@@ -1,4 +1,5 @@
 import os
+import glob
 import tqdm
 import torch
 import torch.nn as nn
@@ -13,7 +14,10 @@ from PIL import Image
 device = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 64
 NUM_CLASSES = 100
-SAVE_NAME = "가반3조_0602_1410"
+SAVE_NAME = "Gaban3jo_0602_1410"
+
+# 저장 디렉토리 생성
+os.makedirs("results", exist_ok=True)
 
 # ======================== 모델 정의 =========================
 model = resnet50(pretrained=True)
@@ -58,7 +62,7 @@ optimizer = Adam([
     {"params": [p for n, p in model.named_parameters() if "layer4" in n], "lr": 1e-5},
     {"params": [p for n, p in model.named_parameters() if "fc" in n], "lr": 1e-4},
 ])
-for epoch in range(5):
+for epoch in range(1):
     iterator = tqdm.tqdm(train_loader)
     for data, label in iterator:
         optimizer.zero_grad()
@@ -79,25 +83,24 @@ with torch.no_grad():
 print(f"\n✅ CIFAR-100 Test Accuracy: {correct / len(test_set):.4f}")
 
 # ==================== 모델 저장 =====================
-torch.save(model.state_dict(), f"weight_{SAVE_NAME}.pth")
+torch.save(model.state_dict(), f"results/weight_{SAVE_NAME}.pth")
 
 # ============ 경진대회용 테스트셋 추론 클래스 =============
 class TestImageDataset(Dataset):
     def __init__(self, folder_path, transform=None):
-        self.folder_path = folder_path
-        self.image_names = sorted(os.listdir(folder_path))
+        self.image_paths = sorted(glob.glob(os.path.join(folder_path, "*.jpg")))
         self.transform = transform
 
     def __len__(self):
-        return len(self.image_names)
+        return len(self.image_paths)
 
     def __getitem__(self, idx):
-        image_name = self.image_names[idx]
-        image_path = os.path.join(self.folder_path, image_name)
+        image_path = self.image_paths[idx]
         image = Image.open(image_path).convert('RGB')
         if self.transform:
             image = self.transform(image)
-        return image_name, image
+        filename = os.path.basename(image_path)
+        return filename, image
 
 # =========== 제출용 테스트셋 추론 및 결과 저장 ===========
 submission_transform = Compose([
@@ -105,11 +108,12 @@ submission_transform = Compose([
     ToTensor(),
     Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))
 ])
-test_folder = "./Test_Dataset"
+test_folder = "./Test_Dataset/CImages"
 test_dataset = TestImageDataset(test_folder, transform=submission_transform)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
 output_lines = []
+model.eval()
 with torch.no_grad():
     for filenames, images in test_loader:
         images = images.to(device)
@@ -120,8 +124,8 @@ with torch.no_grad():
             output_lines.append(f"{num.zfill(4)}, {pred.item():02d}")
 
 # 결과 저장
-with open(f"result_{SAVE_NAME}.txt", "w") as f:
+with open(f"results/result_{SAVE_NAME}.txt", "w") as f:
     f.write("number, label\n")
     f.write("\n".join(output_lines))
 
-print(f"\n📁 결과 저장 완료: result_{SAVE_NAME}.txt")
+print(f"\n📁 결과 저장 완료: results/result_{SAVE_NAME}.txt")
