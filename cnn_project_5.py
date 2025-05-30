@@ -14,7 +14,7 @@ from PIL import Image
 device = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 64
 NUM_CLASSES = 100
-SAVE_NAME = "Gaban3jo_0602_1410"
+SAVE_NAME = "Gaban3jo_0602_1600"
 os.makedirs("results", exist_ok=True)
 
 # ======================== 모델 정의 =========================
@@ -60,7 +60,7 @@ optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=1e-3
 loss_fn = nn.CrossEntropyLoss()
 
 # ===================== 전이학습 단계 =====================
-for epoch in range(5):
+for epoch in range(100):
     model.train()
     iterator = tqdm.tqdm(train_loader)
     for data, label in iterator:
