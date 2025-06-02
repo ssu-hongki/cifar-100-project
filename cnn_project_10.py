@@ -1,3 +1,5 @@
+# efficientNet b0에서 기본적인 모델
+
 import os
 import glob
 import tqdm
