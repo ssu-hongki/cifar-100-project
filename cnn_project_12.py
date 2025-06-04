@@ -8,7 +8,6 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from PIL import Image
 
-# ==================== 설정 ====================
 device = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 64
 NUM_CLASSES = 100
@@ -17,7 +16,6 @@ EPOCHS = 100
 PATIENCE = 10
 os.makedirs("results", exist_ok=True)
 
-# ==================== 모델 정의 ====================
 model = efficientnet_b3(pretrained=True)
 model.classifier = nn.Sequential(
     nn.Dropout(0.5),
@@ -31,7 +29,6 @@ for param in model.parameters():
     param.requires_grad = True
 model.to(device)
 
-# ==================== 데이터 전처리 ====================
 train_transform = Compose([
     Resize(300),
     RandomCrop(300, padding=8),
@@ -44,12 +41,10 @@ train_transform = Compose([
 train_dataset = CIFAR100(root="./data", train=True, download=True, transform=train_transform)
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 
-# ==================== 옵티마이저 & 스케줄러 ====================
 optimizer = AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
 scheduler = CosineAnnealingWarmRestarts(optimizer, T_0=10, T_mult=2)
 loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
 
-# ==================== CutMix 함수 ====================
 def cutmix(data, targets, alpha=1.0):
     lam = np.random.beta(alpha, alpha)
     rand_index = torch.randperm(data.size()[0]).to(device)
@@ -74,7 +69,6 @@ def rand_bbox(size, lam):
     bby2 = np.clip(cy + cut_h // 2, 0, H)
     return bbx1, bby1, bbx2, bby2
 
-# ==================== 학습 루프 ====================
 import numpy as np
 best_loss = float('inf')
 patience_counter = 0
@@ -86,7 +80,6 @@ for epoch in range(EPOCHS):
     for data, label in iterator:
         data, label = data.to(device), label.to(device)
         
-        # CutMix 적용 (50% 확률)
         if np.random.rand() < 0.5:
             data, targets_a, targets_b, lam = cutmix(data, label)
             preds = model(data)
@@ -106,7 +99,6 @@ for epoch in range(EPOCHS):
     avg_loss = total_loss / len(train_loader)
     scheduler.step(epoch)
 
-    # Early stopping
     if avg_loss < best_loss:
         best_loss = avg_loss
         patience_counter = 0
@@ -114,7 +106,7 @@ for epoch in range(EPOCHS):
     else:
         patience_counter += 1
         if patience_counter >= PATIENCE:
-            print("\n⏹️ Early stopping triggered.")
+            print("\nEarly stopping triggered.")
             break
 
-print(f"\n📁 모델 저장 완료: results/weight_{SAVE_NAME}.pth")
+print(f"\n모델 저장 완료: results/weight_{SAVE_NAME}.pth")
