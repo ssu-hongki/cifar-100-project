@@ -1,4 +1,4 @@
-import os, glob, torch, tqdm
+import os, glob, tqdm, torch
 import torch.nn as nn
 import numpy as np
 from torchvision.datasets import CIFAR100, ImageFolder
@@ -12,13 +12,13 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 NUM_CLASSES = 100
 EPOCHS = 100
 BATCH_SIZE = 64
-SAVE_NAME = "YOLOv8_customhead_final"
+SAVE_NAME = "YOLOv8_customhead_fixed"
 DATA_DIR = "./datasets/cifar100"
 TEST_DIR = "./Test_Dataset/CImages"
 SAVE_DIR = "results"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-# ============ CIFAR-100 ImageFolder 변환 ============
+# ============ CIFAR-100 폴더 변환 ============
 def save_images(images, labels, classes, root_dir):
     for idx, (img_arr, label) in enumerate(tqdm.tqdm(zip(images, labels), total=len(images))):
         class_name = classes[label]
@@ -53,15 +53,21 @@ val_dataset = ImageFolder(os.path.join(DATA_DIR, "val"), transform=transform)
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-# ============ YOLO 모델 불러오기 + 분류기 수정 ============
+# ============ YOLO 모델 로드 + FC 헤드만 수정 ============
 model = YOLO("yolov8s-cls.pt")
-# ✅ 분류기(마지막 Linear)만 수정 (Sequential 전체 교체 ❌)
-model.model.model[-1] = nn.Sequential(
-    nn.Linear(1024, 512),
-    nn.ReLU(),
-    nn.Dropout(0.3),
-    nn.Linear(512, NUM_CLASSES)
-)
+
+# ✅ Sequential 전체를 덮지 않고 마지막 레이어만 정확히 교체
+if isinstance(model.model.model, nn.Sequential):
+    last_in = model.model.model[-1].in_features if isinstance(model.model.model[-1], nn.Linear) else 1024
+    model.model.model[-1] = nn.Sequential(
+        nn.Linear(last_in, 512),
+        nn.ReLU(),
+        nn.Dropout(0.3),
+        nn.Linear(512, NUM_CLASSES)
+    )
+else:
+    raise ValueError("model.model.model이 Sequential 구조가 아닙니다.")
+
 model.model.to(device)
 
 # ============ 학습 설정 ============
