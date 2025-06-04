@@ -1,29 +1,26 @@
-import os
-import glob
-import torch
+import os, glob, torch, tqdm
 import torch.nn as nn
+import numpy as np
 from torchvision.datasets import CIFAR100, ImageFolder
 from torchvision.transforms import Compose, Resize, ToTensor, Normalize
 from torch.utils.data import DataLoader, Dataset
 from PIL import Image
-from tqdm import tqdm
 from ultralytics import YOLO
-import numpy as np
 
 # ============ 설정 ============
 device = "cuda" if torch.cuda.is_available() else "cpu"
 NUM_CLASSES = 100
 EPOCHS = 100
 BATCH_SIZE = 64
-SAVE_NAME = "YOLOv8_cls_customhead"
+SAVE_NAME = "YOLOv8_customhead_final"
 DATA_DIR = "./datasets/cifar100"
 TEST_DIR = "./Test_Dataset/CImages"
 SAVE_DIR = "results"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-# ============ CIFAR-100을 ImageFolder 포맷으로 변환 ============
+# ============ CIFAR-100 ImageFolder 변환 ============
 def save_images(images, labels, classes, root_dir):
-    for idx, (img_arr, label) in enumerate(tqdm(zip(images, labels), total=len(images))):
+    for idx, (img_arr, label) in enumerate(tqdm.tqdm(zip(images, labels), total=len(images))):
         class_name = classes[label]
         class_dir = os.path.join(root_dir, class_name)
         os.makedirs(class_dir, exist_ok=True)
@@ -45,7 +42,7 @@ def convert_cifar100_to_imagefolder():
 
 convert_cifar100_to_imagefolder()
 
-# ============ 데이터셋 불러오기 ============
+# ============ 데이터 로딩 ============
 transform = Compose([
     Resize((128, 128)),
     ToTensor(),
@@ -56,8 +53,9 @@ val_dataset = ImageFolder(os.path.join(DATA_DIR, "val"), transform=transform)
 train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-# ============ YOLOv8 분류 모델 로드 + FC 헤드 수정 ============
+# ============ YOLO 모델 불러오기 + 분류기 수정 ============
 model = YOLO("yolov8s-cls.pt")
+# ✅ 분류기(마지막 Linear)만 수정 (Sequential 전체 교체 ❌)
 model.model.model[-1] = nn.Sequential(
     nn.Linear(1024, 512),
     nn.ReLU(),
@@ -66,20 +64,17 @@ model.model.model[-1] = nn.Sequential(
 )
 model.model.to(device)
 
-# ============ 손실 함수 & 옵티마이저 ============
+# ============ 학습 설정 ============
 criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
 optimizer = torch.optim.AdamW(model.model.parameters(), lr=1e-3, weight_decay=1e-4)
-
 best_acc = 0.0
 
 # ============ 학습 루프 ============
 for epoch in range(EPOCHS):
     model.model.train()
-    correct = 0
-    total = 0
-    total_loss = 0
+    correct, total, total_loss = 0, 0, 0
 
-    loop = tqdm(train_loader, desc=f"[Epoch {epoch+1}/{EPOCHS}]", leave=False)
+    loop = tqdm.tqdm(train_loader, desc=f"[Epoch {epoch+1}/{EPOCHS}]", leave=False)
     for x, y in loop:
         x, y = x.to(device), y.to(device)
         outputs = model.model(x)
@@ -96,12 +91,10 @@ for epoch in range(EPOCHS):
         loop.set_postfix(loss=loss.item(), acc=correct/total*100)
 
     train_acc = correct / total * 100
-    print(f"📚 Epoch {epoch+1} - Train Accuracy: {train_acc:.2f}%")
 
-    # 검증
+    # ============ 검증 ============
     model.model.eval()
-    correct = 0
-    total = 0
+    correct, total = 0, 0
     with torch.no_grad():
         for x, y in val_loader:
             x, y = x.to(device), y.to(device)
@@ -110,14 +103,16 @@ for epoch in range(EPOCHS):
             correct += (preds == y).sum().item()
             total += y.size(0)
     val_acc = correct / total * 100
-    print(f"✅ Epoch {epoch+1} - Validation Accuracy: {val_acc:.2f}%")
 
+    print(f"\n📊 Epoch {epoch+1}: Train Acc = {train_acc:.2f}% | Val Acc = {val_acc:.2f}%")
+
+    # ============ best 저장 ============
     if val_acc > best_acc:
         best_acc = val_acc
         torch.save(model.model.state_dict(), f"{SAVE_DIR}/weight_{SAVE_NAME}.pth")
         print(f"💾 Best model 저장됨: {SAVE_DIR}/weight_{SAVE_NAME}.pth")
 
-# ============ 테스트셋 추론 클래스 ============
+# ============ 테스트셋 추론 Dataset 클래스 ============
 class TestImageDataset(Dataset):
     def __init__(self, folder_path, transform=None):
         self.image_paths = sorted(glob.glob(os.path.join(folder_path, "*.jpg")))
@@ -135,11 +130,7 @@ class TestImageDataset(Dataset):
         return filename, image
 
 # ============ 테스트셋 추론 및 결과 저장 ============
-test_transform = Compose([
-    Resize((128, 128)),
-    ToTensor(),
-    Normalize((0.5071, 0.4867, 0.4408), (0.2675, 0.2565, 0.2761))
-])
+test_transform = transform
 test_dataset = TestImageDataset(TEST_DIR, transform=test_transform)
 test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
@@ -149,7 +140,7 @@ with torch.no_grad():
     for filenames, images in test_loader:
         images = images.to(device)
         outputs = model.model(images)
-        _, predicted = outputs.max(1)
+        _, predicted = torch.max(outputs, 1)
         for fname, pred in zip(filenames, predicted):
             num = fname.split('.')[0]
             output_lines.append(f"{num.zfill(4)}, {pred.item():02d}")
@@ -158,4 +149,4 @@ with open(f"{SAVE_DIR}/result_{SAVE_NAME}.txt", "w") as f:
     f.write("number, label\n")
     f.write("\n".join(output_lines))
 
-print(f"\n📁 결과 저장 완료: {SAVE_DIR}/result_{SAVE_NAME}.txt")
+print(f"\n✅ 테스트셋 추론 결과 저장 완료: {SAVE_DIR}/result_{SAVE_NAME}.txt")
