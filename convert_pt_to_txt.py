@@ -36,7 +36,6 @@ class TestImageDataset(Dataset):
 test_transform = Compose([
     Resize((IMG_SIZE, IMG_SIZE)),
     ToTensor(),
-    Normalize((0.507, 0.487, 0.441), (0.267, 0.256, 0.276))
 ])
 test_dataset = TestImageDataset(TEST_FOLDER, transform=test_transform)
 test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
