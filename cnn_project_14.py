@@ -11,7 +11,7 @@ from tqdm import tqdm
 device = "cuda" if torch.cuda.is_available() else "cpu"
 IMG_SIZE = 224
 BATCH_SIZE = 64
-EPOCHS = 50
+EPOCHS = 100
 SAVE_NAME = "YOLOv8X_cls_cifar100"
 DATA_DIR = "datasets/cifar100"
 TEST_FOLDER = "./Test_Dataset/CImages"
