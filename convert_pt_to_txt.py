@@ -52,10 +52,11 @@ with torch.no_grad():
         results = model(images, verbose=False)
 
         for fname, result in zip(filenames, results):
-            pred = int(result.probs.top1)  # top1 클래스 index
+            pred = int(result.probs.data.argmax())  # ← 수정된 라벨 추출
             num = fname.split('.')[0]
             output_lines.append(f"{num.zfill(4)}, {pred:02d}")
 
+# ===== txt 파일 저장 =====
 with open(TXT_PATH, "w") as f:
     f.write("number, label\n")
     f.write("\n".join(output_lines))
